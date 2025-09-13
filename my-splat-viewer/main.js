@@ -635,11 +635,6 @@ async function main() {
     credentials: "omit",
 });
 
-const req = await fetch(urlToLoad, {
-  mode: "cors",
-  credentials: "omit",
-});
-
 // --- TEMP: bypass streaming; load full .splat in one go ---
 {
   const buf = await req.arrayBuffer();
