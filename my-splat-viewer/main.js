@@ -622,7 +622,7 @@ async function main() {
         carousel = false;
     } catch (err) {}
 	// The specific modification to load your local .splat file
-	const defaultSplatFileName = "my_scene.splat?v=" + Date.now(); // <--- This now points to YOUR converted file
+	const defaultSplatFileName = "./my_scene.splat?v=" + Date.now(); // <--- This now points to YOUR converted file
 
 	// This logic determines which URL to try to load: either from the browser's URL parameter or your default.
 	const urlToLoad = params.get("url") || defaultSplatFileName;
