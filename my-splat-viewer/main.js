@@ -1,4 +1,6 @@
 // Add this at the very top of the file
+import * as THREE from 'three';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 console.log("main.js loaded and script execution started.");
 
 let cameras = [
