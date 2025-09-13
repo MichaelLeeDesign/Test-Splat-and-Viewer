@@ -14,10 +14,14 @@
     />
 
     <!-- ✅ Load Three.js + GLTFLoader BEFORE main.js so window.THREE / window.GLTFLoader exist -->
-    <script type="module">
-      import * as THREE from './node_modules/three/build/three.module.js';
-      import { OrbitControls } from './node_modules/three/examples/jsm/controls/OrbitControls.js';
-      import './main.js';
+
+    <script type="importmap">
+    {
+      "imports": {
+      "three": "./node_modules/three/build/three.module.js",
+      "three/examples/jsm/": "./node_modules/three/examples/jsm/"
+     }
+    }
     </script>
 
     <style>
@@ -64,6 +68,7 @@
     </style>
     <base href="/Test-Splat-and-Viewer/my-splat-viewer/">
     <link rel="icon" href="data:,">
+    
   </head>
   <body>
     <script>
@@ -139,6 +144,6 @@ other
     <div id="caminfo"><span id="camid"></span></div>
 
     <!-- Your viewer script (patched main.js) -->
-    <script src="main.js"></script>
+    <script type="module" src="./main.js"></script>
   </body>
 </html>
