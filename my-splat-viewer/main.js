@@ -634,6 +634,31 @@ async function main() {
     mode: "cors",
     credentials: "omit",
 });
+
+const req = await fetch(urlToLoad, {
+  mode: "cors",
+  credentials: "omit",
+});
+
+// --- TEMP: bypass streaming; load full .splat in one go ---
+{
+  const buf = await req.arrayBuffer();
+  if (buf.byteLength % 4 !== 0) {
+    throw new Error(
+      `Unexpected byteLength ${buf.byteLength} — check the path (./my_scene.splat) or whether this is an LFS/HTML response.`
+    );
+  }
+  const u8 = new Uint8Array(buf);
+  const vertexCount = Math.floor(u8.length / rowLength);
+
+  // Send to the existing worker in the same shape your final message used
+  worker.postMessage({ buffer: u8.buffer, vertexCount }, [u8.buffer]);
+
+  return; // IMPORTANT: skip the streaming reader below
+}
+// --- END TEMP ---
+
+
 console.log("Fetch request complete:", req); // Log the response object
     if (req.status != 200)
         throw new Error(req.status + " Unable to load " + req.url);
