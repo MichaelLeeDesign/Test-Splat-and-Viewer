@@ -418,7 +418,7 @@ function createWorker(self) {
 
         console.time("build buffer");
         for (let j = 0; j < vertexCount; j++) {
-            row = sizeIndex[j];
+            row = j;
 
             const position = new Float32Array(buffer, j * rowLength, 3);
             const scales = new Float32Array(buffer, j * rowLength + 4 * 3, 3);
@@ -435,20 +435,22 @@ function createWorker(self) {
 
             if (types["scale_0"]) {
                 const qlen = Math.sqrt(
-                    attrs.rot_0 ** 2 +
-                        attrs.rot_1 ** 2 +
-                        attrs.rot_2 ** 2 +
-                        attrs.rot_3 ** 2,
-                );
+    attrs.rot_0 ** 2 + attrs.rot_1 ** 2 + attrs.rot_2 ** 2 + attrs.rot_3 ** 2,
+);
+let qx = attrs.rot_0 / qlen;
+let qy = attrs.rot_1 / qlen;
+let qz = attrs.rot_2 / qlen;
+let qw = attrs.rot_3 / qlen;
+if (qw < 0.0) { qx = -qx; qy = -qy; qz = -qz; qw = -qw; }
+rot[0] = qx * 127.5 + 127.5;
+rot[1] = qy * 127.5 + 127.5;
+rot[2] = qz * 127.5 + 127.5;
+rot[3] = qw * 127.5 + 127.5;
 
-                rot[0] = (attrs.rot_0 / qlen) * 128 + 128;
-                rot[1] = (attrs.rot_1 / qlen) * 128 + 128;
-                rot[2] = (attrs.rot_2 / qlen) * 128 + 128;
-                rot[3] = (attrs.rot_3 / qlen) * 128 + 128;
-
-                scales[0] = Math.exp(attrs.scale_0);
-                scales[1] = Math.exp(attrs.scale_1);
-                scales[2] = Math.exp(attrs.scale_2);
+                const sMin = 1e-4, sMax = 1e2;
+scales[0] = Math.min(sMax, Math.max(sMin, Math.exp(attrs.scale_0)));
+scales[1] = Math.min(sMax, Math.max(sMin, Math.exp(attrs.scale_1)));
+scales[2] = Math.min(sMax, Math.max(sMin, Math.exp(attrs.scale_2)));
             } else {
                 scales[0] = 0.01;
                 scales[1] = 0.01;
@@ -466,9 +468,17 @@ function createWorker(self) {
 
             if (types["f_dc_0"]) {
                 const SH_C0 = 0.28209479177387814;
-                rgba[0] = (0.5 + SH_C0 * attrs.f_dc_0) * 255;
-                rgba[1] = (0.5 + SH_C0 * attrs.f_dc_1) * 255;
-                rgba[2] = (0.5 + SH_C0 * attrs.f_dc_2) * 255;
+function reinhard(x){ return x/(1.0+x); }
+function lin2srgb(x){ return x <= 0.0031308 ? 12.92*x : 1.055*Math.pow(x, 1.0/2.4)-0.055; }
+const r_lin = Math.max(0.0, 0.5 + SH_C0 * attrs.f_dc_0);
+const g_lin = Math.max(0.0, 0.5 + SH_C0 * attrs.f_dc_1);
+const b_lin = Math.max(0.0, 0.5 + SH_C0 * attrs.f_dc_2);
+const r_tm = reinhard(r_lin);
+const g_tm = reinhard(g_lin);
+const b_tm = reinhard(b_lin);
+rgba[0] = Math.round(255 * Math.min(1, Math.max(0, lin2srgb(r_tm))));
+rgba[1] = Math.round(255 * Math.min(1, Math.max(0, lin2srgb(g_tm))));
+rgba[2] = Math.round(255 * Math.min(1, Math.max(0, lin2srgb(b_tm))));
             } else {
                 rgba[0] = attrs.red;
                 rgba[1] = attrs.green;
@@ -567,7 +577,7 @@ void main () {
     vec2 majorAxis = min(sqrt(2.0 * lambda1), 1024.0) * diagonalVector;
     vec2 minorAxis = min(sqrt(2.0 * lambda2), 1024.0) * vec2(diagonalVector.y, -diagonalVector.x);
 
-    vColor = clamp(pos2d.z/pos2d.w+1.0, 0.0, 1.0) * vec4((cov.w) & 0xffu, (cov.w >> 8) & 0xffu, (cov.w >> 16) & 0xffu, (cov.w >> 24) & 0xffu) / 255.0;
+    vColor = vec4((cov.w) & 0xffu, (cov.w >> 8) & 0xffu, (cov.w >> 16) & 0xffu, (cov.w >> 24) & 0xffu) / 255.0;
     vPosition = position;
 
     vec2 vCenter = vec2(pos2d) / pos2d.w;
@@ -610,7 +620,7 @@ async function main() {
         carousel = false;
     } catch (err) {}
 	// The specific modification to load your local .splat file
-	const defaultSplatFileName = "my_scene.splat"; // <--- This now points to YOUR converted file
+	const defaultSplatFileName = "my_scene.splat?v=" + Date.now(); // <--- This now points to YOUR converted file
 
 	// This logic determines which URL to try to load: either from the browser's URL parameter or your default.
 	const urlToLoad = params.get("url") || defaultSplatFileName;
@@ -651,6 +661,66 @@ console.log("Fetch request complete:", req); // Log the response object
     const gl = canvas.getContext("webgl2", {
         antialias: false,
     });
+	
+	// Safety defaults so viewer code doesn’t crash
+	if (!window.camera) {
+		window.camera = {
+			fx: window.innerWidth * 0.9,
+			fy: window.innerHeight * 0.9,
+			cx: window.innerWidth * 0.5,
+			cy: window.innerHeight * 0.5,
+			position: { x: 0, y: 0, z: 5 },
+			rotation: { x: 0, y: 0, z: 0 },
+			fovy: Math.PI / 3
+		};
+		console.log("Default camera created", window.camera);
+	}
+
+// ---- Three.js hybrid setup (shares the SAME canvas/context) ----
+let three = null;
+if (window && window.THREE) {
+  three = {};
+  three.renderer = new THREE.WebGLRenderer({
+    canvas,
+    context: gl,
+    antialias: true,
+    alpha: true,
+    premultipliedAlpha: true,
+  });
+  three.renderer.autoClear = false;
+  if (THREE.SRGBColorSpace) three.renderer.outputColorSpace = THREE.SRGBColorSpace;
+  if (THREE.ACESFilmicToneMapping) {
+    three.renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    three.renderer.toneMappingExposure = 1.0;
+  }
+
+  three.scene = new THREE.Scene();
+  three.camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.01, 2000);
+  three.scene.add(three.camera);
+
+  // Auto-load logo.glb if present
+  if (window.GLTFLoader) {
+    const loader = new GLTFLoader();
+    loader.load("logo.glb", (gltf) => {
+      const model = gltf.scene;
+      model.traverse((o) => {
+        if (o.isMesh && o.material) {
+          o.material.depthWrite = true;
+          o.material.depthTest = true;
+          if (o.material.map && THREE.SRGBColorSpace) o.material.map.colorSpace = THREE.SRGBColorSpace;
+        }
+      });
+      model.position.set(0, 0, -5); // tweak later
+      three.scene.add(model);
+      console.log("logo.glb loaded into Three scene");
+    }, undefined, (err) => {
+      console.warn("logo.glb not found or failed to load:", err);
+    });
+  } else {
+    console.warn("GLTFLoader not found. Did you add the <script type='module'> block in <head>?");
+  }
+}
+
 
     const vertexShader = gl.createShader(gl.VERTEX_SHADER);
     gl.shaderSource(vertexShader, vertexShaderSource);
@@ -730,6 +800,14 @@ console.log("Fetch request complete:", req); // Log the response object
         gl.viewport(0, 0, gl.canvas.width, gl.canvas.height);
 
         gl.uniformMatrix4fv(u_projection, false, projectionMatrix);
+		
+		  // Keep Three.js renderer/camera in sync (does nothing if 'three' is null)
+			if (three) {
+			three.renderer.setSize(innerWidth, innerHeight, false);
+			three.camera.aspect = innerWidth / innerHeight;
+			three.camera.updateProjectionMatrix();
+			}
+
     };
 
     window.addEventListener("resize", resize);
