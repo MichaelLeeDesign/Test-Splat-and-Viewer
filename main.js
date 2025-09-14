@@ -510,25 +510,41 @@ rgba[2] = Math.round(255 * Math.min(1, Math.max(0, lin2srgb(b_tm))));
         }
     };
 
-    let sortRunning;
-    self.onmessage = (e) => {
-        if (e.data.ply) {
-            vertexCount = 0;
-            runSort(viewProj);
-            buffer = processPlyBuffer(e.data.ply);
-            vertexCount = Math.floor(buffer.byteLength / rowLength);
-            postMessage({ buffer: buffer, save: !!e.data.save });
-        } else if (e.data.buffer) {
-            buffer = e.data.buffer;
-            vertexCount = e.data.vertexCount;
-        } else if (e.data.vertexCount) {
-            vertexCount = e.data.vertexCount;
-        } else if (e.data.view) {
-            viewProj = e.data.view;
-            throttledSort();
-        }
-    };
-}
+	// (inside createWorker(self), near the worker code)
+
+	let sortRunning;
+	self.onmessage = (e) => {
+		if (e.data.ply) {
+			vertexCount = 0;
+			runSort(viewProj);
+			buffer = processPlyBuffer(e.data.ply);
+			vertexCount = Math.floor(buffer.byteLength / rowLength);
+			postMessage({ buffer: buffer, save: !!e.data.save });
+			return;
+			}
+
+		if (e.data.buffer) {
+		buffer = e.data.buffer;
+		// compute if not provided
+		vertexCount = e.data.vertexCount ?? Math.floor(buffer.byteLength / rowLength);
+		throttledSort();
+		return;
+		}
+
+		if (e.data.vertexCount) {
+		vertexCount = e.data.vertexCount;
+		return;
+		}
+
+		if (e.data.view) {
+		viewProj = e.data.view;
+		throttledSort();
+		return;
+		}
+		};
+		
+	};
+
 
 const vertexShaderSource = `
 #version 300 es
@@ -622,7 +638,7 @@ async function main() {
         carousel = false;
     } catch (err) {}
 	// The specific modification to load your local .splat file
-	const defaultSplatFileName = "my_scene.splat?v=" + Date.now(); // <--- This now points to YOUR converted file
+	const defaultSplatFileName = "./my_scene.splat?v=" + Date.now(); // <--- This now points to YOUR converted file
 
 	// This logic determines which URL to try to load: either from the browser's URL parameter or your default.
 	const urlToLoad = params.get("url") || defaultSplatFileName;
@@ -634,6 +650,24 @@ async function main() {
     mode: "cors",
     credentials: "omit",
 });
+
+// --- TEMP: bypass streaming; load full .splat in one go ---
+{
+  const buf = await req.arrayBuffer();
+  if (buf.byteLength % 4 !== 0) {
+    throw new Error(
+      `Unexpected byteLength ${buf.byteLength} — check the path (./my_scene.splat) or whether this is an LFS/HTML response.`
+    );
+  }
+  const u8 = new Uint8Array(buf);
+
+  // Let the worker compute vertexCount from buffer.byteLength / rowLength
+  worker.postMessage({ buffer: u8.buffer }, [u8.buffer]);
+
+  return; // IMPORTANT: skip the streaming reader below
+}
+// --- END TEMP ---
+
 console.log("Fetch request complete:", req); // Log the response object
     if (req.status != 200)
         throw new Error(req.status + " Unable to load " + req.url);
@@ -641,7 +675,8 @@ console.log("Fetch request complete:", req); // Log the response object
     const rowLength = 3 * 4 + 3 * 4 + 4 + 4;
     const reader = req.body.getReader();
     let splatData = new Uint8Array(req.headers.get("content-length"));
-const downsample =
+
+    const downsample =
         splatData.length / rowLength > 500000 ? 1 : 1 / devicePixelRatio;
     console.log(splatData.length / rowLength, downsample);
 
@@ -863,20 +898,24 @@ if (window && window.THREE) {
             gl.bufferData(gl.ARRAY_BUFFER, depthIndex, gl.DYNAMIC_DRAW);
             vertexCount = e.data.vertexCount;
         }
-    }
-// --- TEMP: full-file load (no streaming) ---
-{
-  const buf = await req.arrayBuffer();
-  if (buf.byteLength % 4 !== 0) {
-    throw new Error(`Unexpected byteLength ${buf.byteLength} — check the path or an LFS/HTML response.`);
-  }
-  splatData = new Uint8Array(buf);
-  bytesRead = splatData.length;
-  stopLoading = true;
-  worker.postMessage({ buffer: splatData.buffer }, [splatData.buffer]);
-}
-// --- END TEMP ---
-;
+    };
+	
+	// --- TEMP: bypass streaming; load full .splat in one go ---
+	{
+		const buf = await req.arrayBuffer();
+		if (buf.byteLength % 4 !== 0) {
+		throw new Error(
+      `Unexpected byteLength ${buf.byteLength} — check the path (./my_scene.splat) or whether this is an LFS/HTML response.`
+		);
+	  }
+	  const u8 = new Uint8Array(buf);
+
+	  // Let the worker compute vertexCount from buffer.byteLength / rowLength
+	  worker.postMessage({ buffer: u8.buffer }, [u8.buffer]);
+
+	  return; // IMPORTANT: skip the streaming reader below
+	}
+	// --- END TEMP --- 
 
     let activeKeys = [];
     let currentCameraIndex = 0;
@@ -1415,37 +1454,40 @@ if (window && window.THREE) {
         e.stopPropagation();
         selectFile(e.dataTransfer.files[0]);
     });
-    if (!stopLoading) {
-while (true) {
-        const { done, value } = await reader.read();
-        if (done || stopLoading) break;
 
-        splatData.set(value, bytesRead);
-        bytesRead += value.length;
+    let bytesRead = 0;
+    let lastVertexCount = -1;
+    let stopLoading = false;
 
-        if (vertexCount > lastVertexCount) {
-            if (!isPly(splatData)) {
-                worker.postMessage({
-                    buffer: splatData.buffer,
-                    vertexCount: Math.floor(bytesRead / rowLength),
-                });
-            }
-            lastVertexCount = vertexCount;
-        }
-    }
-    if (!stopLoading) {
-        if (isPly(splatData)) {
-            // ply file magic header means it should be handled differently
-            worker.postMessage({ ply: splatData.buffer, save: false });
-        } else {
-            worker.postMessage({
-                buffer: splatData.buffer,
-                vertexCount: Math.floor(bytesRead / rowLength),
-            });
-        }
-    }
-}
+	if (!stopLoading) {
+	  while (true) {
+		const { done, value } = await reader.read();
+		if (done || stopLoading) break;
 
+		splatData.set(value, bytesRead);
+		bytesRead += value.length;
+
+		if (vertexCount > lastVertexCount) {
+		  if (!isPly(splatData)) {
+			worker.postMessage({
+			  buffer: splatData.buffer,
+			  vertexCount: Math.floor(bytesRead / (3*4 + 3*4 + 4 + 4)), // rowLength inline here is fine
+			});
+		  }
+		  lastVertexCount = vertexCount;
+		}
+	  }
+
+	  if (!stopLoading) {
+		if (isPly(splatData)) {
+		  worker.postMessage({ ply: splatData.buffer, save: false });
+		} else {
+		  worker.postMessage({
+			buffer: splatData.buffer,
+			vertexCount: Math.floor(bytesRead / (3*4 + 3*4 + 4 + 4)),
+		  });
+		}
+	}
 }
 
 main().catch((err) => {
