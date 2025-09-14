@@ -510,33 +510,8 @@ rgba[2] = Math.round(255 * Math.min(1, Math.max(0, lin2srgb(b_tm))));
         }
     };
 
-    let sortRunning;
-    self.onmessage = (e) => {
-        if (e.data.ply) {
-            vertexCount = 0;
-            runSort(viewProj);
-            buffer = processPlyBuffer(e.data.ply);
-            vertexCount = Math.floor(buffer.byteLength / rowLength);
-            postMessage({ buffer: buffer, save: !!e.data.save });
-        } else if (e.data.buffer) {
-            buffer = e.data.buffer;
-            vertexCount = e.data.vertexCount;
-			
-			} else if (e.data.buffer) {
-				buffer = e.data.buffer;
-				// compute if not provided
-				vertexCount = e.data.vertexCount ?? Math.floor(buffer.byteLength / rowLength);
-			}
-			
-        } else if (e.data.vertexCount) {
-            vertexCount = e.data.vertexCount;
-        } else if (e.data.view) {
-            viewProj = e.data.view;
-            throttledSort();
-        }
-    };
-	
 	// (inside createWorker(self), near the worker code)
+
 	let sortRunning;
 	self.onmessage = (e) => {
 		if (e.data.ply) {
@@ -545,22 +520,31 @@ rgba[2] = Math.round(255 * Math.min(1, Math.max(0, lin2srgb(b_tm))));
 			buffer = processPlyBuffer(e.data.ply);
 			vertexCount = Math.floor(buffer.byteLength / rowLength);
 			postMessage({ buffer: buffer, save: !!e.data.save });
+			return;
+			}
 
-		} else if (e.data.buffer) {
-			buffer = e.data.buffer;
-			// compute if not provided
-			vertexCount = e.data.vertexCount ?? Math.floor(buffer.byteLength / rowLength);
-
-		} else if (e.data.vertexCount) {
-			vertexCount = e.data.vertexCount;
-
-		} else if (e.data.view) {
-			viewProj = e.data.view;
-			throttledSort();
+		if (e.data.buffer) {
+		buffer = e.data.buffer;
+		// compute if not provided
+		vertexCount = e.data.vertexCount ?? Math.floor(buffer.byteLength / rowLength);
+		throttledSort();
+		return;
 		}
+
+		if (e.data.vertexCount) {
+		vertexCount = e.data.vertexCount;
+		return;
+		}
+
+		if (e.data.view) {
+		viewProj = e.data.view;
+		throttledSort();
+		return;
+		}
+		};
+		
 	};
 
-}
 
 const vertexShaderSource = `
 #version 300 es
@@ -676,15 +660,13 @@ async function main() {
     );
   }
   const u8 = new Uint8Array(buf);
-  const vertexCount = Math.floor(u8.length / rowLength);
 
-  // Send to the existing worker in the same shape your final message used
+  // Let the worker compute vertexCount from buffer.byteLength / rowLength
   worker.postMessage({ buffer: u8.buffer }, [u8.buffer]);
 
   return; // IMPORTANT: skip the streaming reader below
 }
 // --- END TEMP ---
-
 
 console.log("Fetch request complete:", req); // Log the response object
     if (req.status != 200)
@@ -917,6 +899,23 @@ if (window && window.THREE) {
             vertexCount = e.data.vertexCount;
         }
     };
+	
+	// --- TEMP: bypass streaming; load full .splat in one go ---
+	{
+		const buf = await req.arrayBuffer();
+		if (buf.byteLength % 4 !== 0) {
+		throw new Error(
+      `Unexpected byteLength ${buf.byteLength} — check the path (./my_scene.splat) or whether this is an LFS/HTML response.`
+		);
+	  }
+	  const u8 = new Uint8Array(buf);
+
+	  // Let the worker compute vertexCount from buffer.byteLength / rowLength
+	  worker.postMessage({ buffer: u8.buffer }, [u8.buffer]);
+
+	  return; // IMPORTANT: skip the streaming reader below
+	}
+	// --- END TEMP --- 
 
     let activeKeys = [];
     let currentCameraIndex = 0;
@@ -1460,34 +1459,35 @@ if (window && window.THREE) {
     let lastVertexCount = -1;
     let stopLoading = false;
 
-    while (true) {
-        const { done, value } = await reader.read();
-        if (done || stopLoading) break;
+	if (!stopLoading) {
+	  while (true) {
+		const { done, value } = await reader.read();
+		if (done || stopLoading) break;
 
-        splatData.set(value, bytesRead);
-        bytesRead += value.length;
+		splatData.set(value, bytesRead);
+		bytesRead += value.length;
 
-        if (vertexCount > lastVertexCount) {
-            if (!isPly(splatData)) {
-                worker.postMessage({
-                    buffer: splatData.buffer,
-                    vertexCount: Math.floor(bytesRead / rowLength),
-                });
-            }
-            lastVertexCount = vertexCount;
-        }
-    }
-    if (!stopLoading) {
-        if (isPly(splatData)) {
-            // ply file magic header means it should be handled differently
-            worker.postMessage({ ply: splatData.buffer, save: false });
-        } else {
-            worker.postMessage({
-                buffer: splatData.buffer,
-                vertexCount: Math.floor(bytesRead / rowLength),
-            });
-        }
-    }
+		if (vertexCount > lastVertexCount) {
+		  if (!isPly(splatData)) {
+			worker.postMessage({
+			  buffer: splatData.buffer,
+			  vertexCount: Math.floor(bytesRead / (3*4 + 3*4 + 4 + 4)), // rowLength inline here is fine
+			});
+		  }
+		  lastVertexCount = vertexCount;
+		}
+	  }
+
+	  if (!stopLoading) {
+		if (isPly(splatData)) {
+		  worker.postMessage({ ply: splatData.buffer, save: false });
+		} else {
+		  worker.postMessage({
+			buffer: splatData.buffer,
+			vertexCount: Math.floor(bytesRead / (3*4 + 3*4 + 4 + 4)),
+		  });
+		}
+	}
 }
 
 main().catch((err) => {
