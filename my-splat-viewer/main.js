@@ -521,6 +521,13 @@ rgba[2] = Math.round(255 * Math.min(1, Math.max(0, lin2srgb(b_tm))));
         } else if (e.data.buffer) {
             buffer = e.data.buffer;
             vertexCount = e.data.vertexCount;
+			
+			} else if (e.data.buffer) {
+				buffer = e.data.buffer;
+				// compute if not provided
+				vertexCount = e.data.vertexCount ?? Math.floor(buffer.byteLength / rowLength);
+			}
+			
         } else if (e.data.vertexCount) {
             vertexCount = e.data.vertexCount;
         } else if (e.data.view) {
@@ -647,7 +654,7 @@ async function main() {
   const vertexCount = Math.floor(u8.length / rowLength);
 
   // Send to the existing worker in the same shape your final message used
-  worker.postMessage({ buffer: u8.buffer, vertexCount }, [u8.buffer]);
+  worker.postMessage({ buffer: u8.buffer }, [u8.buffer]);
 
   return; // IMPORTANT: skip the streaming reader below
 }
