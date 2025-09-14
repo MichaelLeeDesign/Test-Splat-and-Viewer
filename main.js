@@ -734,27 +734,26 @@ if (window && window.THREE) {
   three.camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 0.01, 2000);
   three.scene.add(three.camera);
 
-  // Auto-load logo.glb if present
-  if (window.GLTFLoader) {
-    const loader = new GLTFLoader();
-    loader.load("logo.glb", (gltf) => {
-      const model = gltf.scene;
-      model.traverse((o) => {
-        if (o.isMesh && o.material) {
-          o.material.depthWrite = true;
-          o.material.depthTest = true;
-          if (o.material.map && THREE.SRGBColorSpace) o.material.map.colorSpace = THREE.SRGBColorSpace;
-        }
-      });
-      model.position.set(0, 0, -5); // tweak later
-      three.scene.add(model);
-      console.log("logo.glb loaded into Three scene");
-    }, undefined, (err) => {
-      console.warn("logo.glb not found or failed to load:", err);
+  
+// Auto-load logo.glb if present (optional)
+(function(){
+  const loader = new GLTFLoader();
+  loader.load("logo.glb", (gltf) => {
+    const model = gltf.scene;
+    model.traverse((o) => {
+      if (o.isMesh && o.material) {
+        o.material.depthWrite = true;
+        o.material.depthTest = true;
+        if (o.material.map && THREE.SRGBColorSpace) o.material.map.colorSpace = THREE.SRGBColorSpace;
+      }
     });
-  } else {
-    console.warn("GLTFLoader not found. Did you add the <script type='module'> block in <head>?");
-  }
+    model.position.set(0, 0, -5);
+    three.scene.add(model);
+    console.log("logo.glb loaded into Three scene");
+  }, undefined, (err) => {
+    console.warn("logo.glb not found or failed to load:", err);
+  });
+})();
 }
 
 
