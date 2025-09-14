@@ -1,36 +1,7 @@
 <!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="mobile-web-app-capable" content="yes" />
-    <title>My Splat + GLB Viewer</title>
-
-    <!-- Single import map (no duplicates) -->
-    <script type="importmap">
-      {
-        "imports": {
-          "three": "https://unpkg.com/three@0.178.0/build/three.module.js",
-          "three/examples/jsm/": "https://unpkg.com/three@0.178.0/examples/jsm/"
-        }
-      }
-    </script>
-
-    <style>
-      html, body { margin:0; height:100%; background:#000; color:#ddd; }
-      #ui { position:fixed; left:12px; top:10px; font:14px system-ui; }
-      #message { position:fixed; left:12px; bottom:12px; max-width:50ch; }
-      canvas { display:block; width:100vw; height:100vh; }
-      #spinner { position:fixed; right:12px; top:12px; }
-    </style>
-  </head>
-  <body>
-    <div id="ui">▶ Use mouse or arrow keys to navigate.</div>
-    <div id="spinner">⏳</div>
-    <div id="message"></div>
-    <canvas id="canvas"></canvas>
-
-    <!-- Single module script -->
-    <script type="module" src="./main.js"></script>
-  </body>
-</html>
+<meta charset="utf-8" />
+<title>Redirecting…</title>
+<link rel="canonical" href="my-splat-viewer/">
+<meta http-equiv="refresh" content="0; url=my-splat-viewer/">
+<script>location.replace('my-splat-viewer/' + location.search + location.hash);</script>
+<p>If not redirected, <a href="my-splat-viewer/">click here</a>.</p>
