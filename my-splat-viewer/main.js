@@ -535,6 +535,31 @@ rgba[2] = Math.round(255 * Math.min(1, Math.max(0, lin2srgb(b_tm))));
             throttledSort();
         }
     };
+	
+	// (inside createWorker(self), near the worker code)
+	let sortRunning;
+	self.onmessage = (e) => {
+		if (e.data.ply) {
+			vertexCount = 0;
+			runSort(viewProj);
+			buffer = processPlyBuffer(e.data.ply);
+			vertexCount = Math.floor(buffer.byteLength / rowLength);
+			postMessage({ buffer: buffer, save: !!e.data.save });
+
+		} else if (e.data.buffer) {
+			buffer = e.data.buffer;
+			// compute if not provided
+			vertexCount = e.data.vertexCount ?? Math.floor(buffer.byteLength / rowLength);
+
+		} else if (e.data.vertexCount) {
+			vertexCount = e.data.vertexCount;
+
+		} else if (e.data.view) {
+			viewProj = e.data.view;
+			throttledSort();
+		}
+	};
+
 }
 
 const vertexShaderSource = `
